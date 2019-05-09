@@ -93,7 +93,8 @@ public:
     enum TerminationReason {
         TIMEOUT, ///< The stream was terminated due to a timeout
         BUFFERED_DATA, ///< The stream was terminated because it had too much buffered data
-        SACKED_SEGMENTS ///< The stream was terminated because it had too many SACKed segments
+        SACKED_SEGMENTS, ///< The stream was terminated because it had too many SACKed segments
+        CAPACITY_EXCEEDED
     };
 
     /**
@@ -164,6 +165,9 @@ public:
         stream_keep_alive_ = keep_alive;
     }
 
+    void stream_capacity(size_t count) {
+        stream_capacity_ = count;
+    }
     /**
      * Finds the stream identified by the provided arguments.
      *
@@ -217,7 +221,7 @@ private:
 
     Stream& find_stream(const stream_id& id);
     void process_packet(PDU& packet, const timestamp_type& ts);
-    void cleanup_streams(const timestamp_type& now);
+    void cleanup_streams(const timestamp_type& now, bool cleanup_earliest = false);
 
     streams_type streams_;
     stream_callback_type on_new_connection_;
@@ -226,6 +230,7 @@ private:
     uint32_t max_buffered_bytes_;
     timestamp_type last_cleanup_;
     timestamp_type stream_keep_alive_;
+    size_t stream_capacity_;
     bool attach_to_flows_;
 };
 
