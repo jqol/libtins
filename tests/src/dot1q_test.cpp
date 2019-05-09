@@ -58,6 +58,17 @@ TEST_F(Dot1QTest, Serialize) {
     );
 }
 
+TEST_F(Dot1QTest, SerializeCraftedPacket)
+{
+    EthernetII pkt = EthernetII() / Dot1Q(10) / IP("192.168.1.2") / TCP(23, 45) / RawPDU("asdasdasd");
+    PDU::serialization_type buffer = pkt.serialize();
+    EXPECT_EQ(buffer[12], 0x81);
+    EXPECT_EQ(buffer[13], 0x00);
+    EthernetII pkt2(&buffer[0], buffer.size());
+    const Dot1Q &q1 = pkt2.rfind_pdu<Dot1Q>();
+    EXPECT_EQ(10, q1.id());
+}
+
 TEST_F(Dot1QTest, PayloadType) {
     Dot1Q dot1;
     dot1.payload_type(0x9283);
@@ -86,6 +97,12 @@ TEST_F(Dot1QTest, QinQ) {
     EthernetII pkt = EthernetII() / Dot1Q(10) / Dot1Q(42) / IP("192.168.1.2") / 
                      TCP(23, 45) / RawPDU("asdasdasd");
     PDU::serialization_type buffer = pkt.serialize();
+    // First PID of the serialized packet should be Dot1AD = 0x88a8
+    EXPECT_EQ(buffer[12], 0x88);
+    EXPECT_EQ(buffer[13], 0xa8);
+    // Second PID of the serialized packet chouls be Dot1Q = 0x8100
+    EXPECT_EQ(buffer[16], 0x81);
+    EXPECT_EQ(buffer[17], 0x00);
     EthernetII pkt2(&buffer[0], buffer.size());
     const Dot1Q& q1 = pkt2.rfind_pdu<Dot1Q>();
     ASSERT_TRUE(q1.inner_pdu() != NULL);

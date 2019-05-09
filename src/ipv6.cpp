@@ -43,6 +43,7 @@
 #include <tins/memory_helpers.h>
 #include <tins/detail/pdu_helpers.h>
 
+using std::make_pair;
 using std::vector;
 
 using Tins::Memory::InputMemoryStream;
@@ -67,6 +68,49 @@ PDU::metadata IPv6::extract_metadata(const uint8_t *buffer, uint32_t total_sz) {
         stream.skip(payload_size);
     }
     return metadata(header_size, pdu_flag, PDU::UNKNOWN);
+}
+
+IPv6::hop_by_hop_header IPv6::hop_by_hop_header::from_extension_header(const ext_header& hdr) {
+    if (TINS_UNLIKELY(hdr.option() != HOP_BY_HOP)) {
+        throw invalid_ipv6_extension_header();
+    }
+    hop_by_hop_header header;
+    header.options = parse_header_options(hdr.data_ptr(), hdr.data_size());
+    return header;
+}
+
+IPv6::destination_routing_header IPv6::destination_routing_header::from_extension_header(const ext_header& hdr) {
+    if (TINS_UNLIKELY(hdr.option() != DESTINATION_ROUTING_OPTIONS)) {
+        throw invalid_ipv6_extension_header();
+    }
+    destination_routing_header header;
+    header.options = parse_header_options(hdr.data_ptr(), hdr.data_size());
+    return header;
+}
+
+IPv6::routing_header IPv6::routing_header::from_extension_header(const ext_header& hdr) {
+    if (TINS_UNLIKELY(hdr.option() != ROUTING)) {
+        throw invalid_ipv6_extension_header();
+    }
+    Memory::InputMemoryStream stream(hdr.data_ptr(), hdr.data_size());
+    routing_header header;
+    header.routing_type = stream.read<uint8_t>();
+    header.segments_left = stream.read<uint8_t>();
+    header.data.assign(stream.pointer(), stream.pointer() + stream.size());
+    return header;
+}
+
+IPv6::fragment_header IPv6::fragment_header::from_extension_header(const ext_header& hdr) {
+    if (TINS_UNLIKELY(hdr.option() != FRAGMENT)) {
+        throw invalid_ipv6_extension_header();
+    }
+    Memory::InputMemoryStream stream(hdr.data_ptr(), hdr.data_size());
+    fragment_header header;
+    uint16_t field = stream.read_be<uint16_t>();
+    header.fragment_offset = field >> 3;
+    header.more_fragments = field & 1;
+    header.identification = stream.read_be<uint32_t>();
+    return header;
 }
 
 IPv6::IPv6(address_type ip_dst, address_type ip_src, PDU* /*child*/)
@@ -162,6 +206,38 @@ bool IPv6::is_extension_header(uint8_t header_id) {
         || header_id == ROUTING || header_id == FRAGMENT || header_id == AUTHENTICATION
         || header_id == SECURITY_ENCAPSULATION || header_id == DESTINATION_OPTIONS
         || header_id == MOBILITY || header_id == NO_NEXT_HEADER;
+}
+
+uint32_t IPv6::get_padding_size(const ext_header& header) {
+    const uint32_t padding = (header.data_size() + sizeof(uint8_t) * 2) % 8;
+    return padding == 0 ? 0 : (8 - padding);
+}
+
+vector<IPv6::header_option_type> IPv6::parse_header_options(const uint8_t* data, size_t size) {
+    Memory::InputMemoryStream stream(data, size);
+    vector<header_option_type> options;
+
+    while (stream.size() > 0) {
+        try {
+            uint8_t option = stream.read<uint8_t>();
+            if (option == PAD_1) {
+                continue;
+            }
+            uint8_t size = stream.read<uint8_t>();
+            if (size > stream.size()) {
+                throw invalid_ipv6_extension_header();
+            }
+            if (option != PAD_N) {
+                options.push_back(make_pair(option, vector<uint8_t>(stream.pointer(),
+                                                                    stream.pointer() +
+                                                                    size)));
+            }
+            stream.skip(size);
+        } catch (const malformed_packet&) {
+            throw invalid_ipv6_extension_header();
+        }
+    }
+    return options;
 }
 
 void IPv6::version(small_uint<4> new_version) {
@@ -291,16 +367,20 @@ void IPv6::write_serialization(uint8_t* buffer, uint32_t total_sz) {
 
 #ifndef BSD
 void IPv6::send(PacketSender& sender, const NetworkInterface &) {
-    struct sockaddr_in6 link_addr;
-    PacketSender::SocketType type = PacketSender::IPV6_SOCKET;
+    sockaddr_in6 link_addr;
+    const PacketSender::SocketType type = PacketSender::IPV6_SOCKET;
     link_addr.sin6_family = AF_INET6;
     link_addr.sin6_port = 0;
     memcpy((uint8_t*)&link_addr.sin6_addr, header_.dst_addr, address_type::address_size);
-    if (inner_pdu() && inner_pdu()->pdu_type() == PDU::ICMP) {
-        type = PacketSender::ICMP_SOCKET;
-    }
-
     sender.send_l3(*this, (struct sockaddr*)&link_addr, sizeof(link_addr), type);
+}
+
+PDU* IPv6::recv_response(PacketSender& sender, const NetworkInterface &) {
+    PacketSender::SocketType type = PacketSender::IPV6_SOCKET;
+    if (inner_pdu() && inner_pdu()->pdu_type() == PDU::ICMPv6) {
+        type = PacketSender::ICMPV6_SOCKET;
+    }
+    return sender.recv_l3(*this, 0, sizeof(sockaddr_in6), type);
 }
 #endif
 
@@ -337,6 +417,8 @@ uint32_t IPv6::calculate_headers_size() const {
     uint32_t output = 0;
     for (const_iterator iter = ext_headers_.begin(); iter != ext_headers_.end(); ++iter) {
         output += static_cast<uint32_t>(iter->data_size() + sizeof(uint8_t) * 2);
+        output += get_padding_size(*iter);
+
     }
     return output;
 }
@@ -346,6 +428,8 @@ void IPv6::write_header(const ext_header& header, OutputMemoryStream& stream) {
     stream.write(header.option());
     stream.write(length);
     stream.write(header.data_ptr(), header.data_size());
+    // Append padding
+    stream.fill(get_padding_size(header), 0);
 }
 
 } // Tins

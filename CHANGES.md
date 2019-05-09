@@ -1,3 +1,57 @@
+##### v4.2 - Fri Mar  8 04:15:13 UTC 2019
+
+- Updated location of installed CMake files in unix systems (#331)
+
+- Fix check to detect cross compilation (#330)
+
+- Allow getting a PDU's advertised size and use it in `PacketWriter` (#324)
+
+- Install DLLs in right directory (#326)
+
+- Add missing Dot11 tagged option types (#305)
+
+- Add support for DLT_RAW (#313)
+
+- Fix potential invalid memory accesses when parsing RadioTap (#322)
+
+##### v4.1 - Tue Dec 11 02:08:48 UTC 2018
+
+- Fix serialization for QinQ (#316)
+
+- Added base class access specifier for socket_close_error (#306)
+
+- Rewrote hw_address_to_string to not require a stringstream (#299)
+
+- Make RadioTapParser::skip_to_field check for end of buffer (#296)
+
+- Ensure local include directory comes before system. (#293)
+
+- Calculate IP option sizes properly (#288)
+
+- Add parsing of well known IPv6 extension headers (#287)
+
+- Add missing operators to address classes (#275)
+
+- Add version macros in config.h
+
+- Don't assume IPv6 uses ICMPv6 underneath
+
+- Allow users to specify library install dir
+
+- Use Sleep windows function passing milliseconds as parameter
+
+- Implement IPv6::recv_response
+
+- Don't use nullptr in non C++11 code
+
+- Ignore (possibly malformed) options after EOL (#281)
+
+- Don't include dot11.h in tins.h if it is not configured in the library (#277)
+
+- Fix memory leak in PDU's move assignment operator
+
+- Append padding to IPv6 options
+
 ##### v4.0 - Mon Dec  4 00:04:30 UTC 2017
 
 - Add parent PDU to each PDU.

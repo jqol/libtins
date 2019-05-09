@@ -170,6 +170,7 @@ public:
         ICMPv6,
         SLL,
         DHCPv6,
+        DOT1AD,
         DOT1Q,
         PPPOE,
         STP,
@@ -244,8 +245,9 @@ public:
          * \param rhs The PDU to be moved.
          */
         PDU& operator=(PDU &&rhs) TINS_NOEXCEPT {
+            delete inner_pdu_;
+            inner_pdu_ = 0;
             std::swap(inner_pdu_, rhs.inner_pdu_);
-            rhs.inner_pdu_ = 0;
             if (inner_pdu_) {
                 inner_pdu_->parent_pdu(this);
             }
@@ -278,6 +280,12 @@ public:
      * Returns the sum of this and all children PDUs' size.
      */
     uint32_t size() const;
+
+    /** \brief The whole chain of PDU's advertised size, including this one.
+     *
+     * Returns the sum of this and all children PDU's advertised size.
+     */
+    virtual uint32_t advertised_size() const;
 
     /**
      * \brief Getter for the inner PDU.

@@ -128,7 +128,7 @@ public:
 /**
  * \brief Exception thrown when PacketSender fails to close a socket.
  */
-class socket_close_error : exception_base {
+class socket_close_error : public exception_base {
 public:
     socket_close_error(const std::string& msg)
     : exception_base(msg) { }
@@ -202,6 +202,15 @@ public:
 class option_payload_too_large : public exception_base {
 public:
     option_payload_too_large() : exception_base("Option payload too large") { }
+};
+
+/**
+ * \brief Exception thrown when an IPv6 extension header is being
+ * created from invalid data
+ */
+class invalid_ipv6_extension_header : public exception_base {
+public:
+    invalid_ipv6_extension_header() : exception_base("Invalid IPv6 extension header") { }
 };
 
 /**
