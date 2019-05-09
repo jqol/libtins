@@ -232,7 +232,6 @@ private:
     timestamp_type stream_keep_alive_;
     size_t stream_capacity_;
     bool attach_to_flows_;
-    stream_id earliest_stream_;
 };
 
 } // TCPIP

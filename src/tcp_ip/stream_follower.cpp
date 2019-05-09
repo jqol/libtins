@@ -60,7 +60,7 @@ const StreamFollower::timestamp_type StreamFollower::DEFAULT_KEEP_ALIVE = minute
 StreamFollower::StreamFollower() 
 : max_buffered_chunks_(DEFAULT_MAX_BUFFERED_CHUNKS),
   max_buffered_bytes_(DEFAULT_MAX_BUFFERED_BYTES), last_cleanup_(0),
-  stream_keep_alive_(DEFAULT_KEEP_ALIVE), attach_to_flows_(false) {
+  stream_keep_alive_(DEFAULT_KEEP_ALIVE), stream_capacity_(0xffffffff) , attach_to_flows_(false){
 
 }
 
@@ -92,9 +92,7 @@ void StreamFollower::process_packet(PDU& packet, const timestamp_type& ts) {
         }
         // Start tracking if they're either SYNs or they contain data (attach
         // to an already running flow).
-        // Start on client's SYN, not on server's SYN+ACK
-        const bool is_syn = tcp->has_flags(TCP::SYN) && !tcp->has_flags(TCP::ACK);
-        if (is_syn || (attach_to_flows_ && tcp->find_pdu<RawPDU>() != 0)) {
+        if (tcp->flags() == TCP::SYN || (attach_to_flows_ && tcp->find_pdu<RawPDU>() != 0)) {
             iter = streams_.insert(make_pair(identifier, Stream(packet, ts))).first;
             iter->second.setup_flows_callbacks();
             if (on_new_connection_) {
@@ -103,7 +101,7 @@ void StreamFollower::process_packet(PDU& packet, const timestamp_type& ts) {
             else {
                 throw callback_not_set();
             }
-            if (!is_syn) {
+            if (tcp->flags() != TCP::SYN) {
                 // assume the connection is established
                 iter->second.client_flow().state(Flow::ESTABLISHED);
                 iter->second.server_flow().state(Flow::ESTABLISHED);
