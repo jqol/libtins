@@ -82,9 +82,19 @@ void StreamFollower::process_packet(PDU& packet, const timestamp_type& ts) {
     stream_id identifier = stream_id::make_identifier(packet);
     streams_type::iterator iter = streams_.find(identifier);
     if (iter == streams_.end()) {
+        // Check capacity
+        if (streams_.size() == stream_capacity_) {
+            cleanup_streams(ts, true);
+            if (streams_.size() == stream_capacity_) {
+                // WTF
+                return;
+            }
+        }
         // Start tracking if they're either SYNs or they contain data (attach
         // to an already running flow).
-        if (tcp->flags() == TCP::SYN || (attach_to_flows_ && tcp->find_pdu<RawPDU>() != 0)) {
+        // Start on client's SYN, not on server's SYN+ACK
+        const bool is_syn = tcp->has_flags(TCP::SYN) && !tcp->has_flags(TCP::ACK);
+        if (is_syn || (attach_to_flows_ && tcp->find_pdu<RawPDU>() != 0)) {
             iter = streams_.insert(make_pair(identifier, Stream(packet, ts))).first;
             iter->second.setup_flows_callbacks();
             if (on_new_connection_) {
@@ -93,7 +103,7 @@ void StreamFollower::process_packet(PDU& packet, const timestamp_type& ts) {
             else {
                 throw callback_not_set();
             }
-            if (tcp->flags() != TCP::SYN) {
+            if (!is_syn) {
                 // assume the connection is established
                 iter->second.client_flow().state(Flow::ESTABLISHED);
                 iter->second.server_flow().state(Flow::ESTABLISHED);
@@ -177,8 +187,9 @@ void StreamFollower::follow_partial_streams(bool value) {
     attach_to_flows_ = value;
 }
 
-void StreamFollower::cleanup_streams(const timestamp_type& now) {
-    streams_type::iterator iter = streams_.begin();
+void StreamFollower::cleanup_streams(const timestamp_type& now, bool cleanup_earliest /*= false*/) {
+    streams_type::iterator iter = streams_.begin(), iter_earliest = streams_.end();
+    timestamp_type min_ts = now;
     while (iter != streams_.end()) {
         if (iter->second.last_seen() + stream_keep_alive_ <= now) {
             // If we have a termination callback, execute it
@@ -188,9 +199,21 @@ void StreamFollower::cleanup_streams(const timestamp_type& now) {
             streams_.erase(iter++);
         }
         else {
+            if (iter->second.last_seen() < min_ts) {
+                min_ts = iter->second.last_seen();
+                iter_earliest = iter;
+            }
             ++iter;
         }
     }
+    // clean up the earliest seen stream
+    if (cleanup_earliest && iter_earliest != streams_.end()) {
+        if (on_stream_termination_) {
+            on_stream_termination_(iter_earliest->second, CAPACITY_EXCEEDED);
+        }
+        streams_.erase(iter_earliest);
+    }
+
     last_cleanup_ = now;
 }
 
